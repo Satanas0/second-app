@@ -1,0 +1,651 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>SuperToken DAO</title>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/ethers/6.13.4/ethers.umd.min.js"></script>
+  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+
+    body {
+      font-family: 'JetBrains Mono', monospace;
+      background: #09090b;
+      color: #a1a1aa;
+      min-height: 100vh;
+      font-size: 13px;
+    }
+
+    .wrap {
+      max-width: 720px;
+      margin: 0 auto;
+      padding: 32px 16px 80px;
+    }
+
+    /* ── Header ──────────────── */
+    header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 48px;
+    }
+
+    .logo {
+      font-size: 15px;
+      font-weight: 600;
+      color: #fafafa;
+      letter-spacing: -0.5px;
+    }
+
+    .logo span { color: #3b82f6; }
+
+    #connectBtn {
+      font-family: inherit;
+      font-size: 12px;
+      padding: 8px 16px;
+      border-radius: 6px;
+      border: 1px solid #27272a;
+      background: transparent;
+      color: #a1a1aa;
+      cursor: pointer;
+      transition: .15s;
+    }
+
+    #connectBtn:hover {
+      border-color: #3b82f6;
+      color: #fafafa;
+    }
+
+    #connectBtn.on {
+      background: #18181b;
+      color: #fafafa;
+    }
+
+    /* ── Stats ────────────────── */
+    .stats {
+      display: flex;
+      gap: 1px;
+      background: #27272a;
+      border-radius: 8px;
+      overflow: hidden;
+      margin-bottom: 48px;
+    }
+
+    .stat {
+      flex: 1;
+      background: #09090b;
+      padding: 20px;
+    }
+
+    .stat-label {
+      font-size: 10px;
+      text-transform: uppercase;
+      letter-spacing: 1.5px;
+      color: #52525b;
+      margin-bottom: 8px;
+    }
+
+    .stat-val {
+      font-size: 18px;
+      font-weight: 600;
+      color: #fafafa;
+    }
+
+    /* ── Create form ──────────── */
+    .section-label {
+      font-size: 10px;
+      text-transform: uppercase;
+      letter-spacing: 1.5px;
+      color: #52525b;
+      margin-bottom: 16px;
+    }
+
+    .create-box {
+      display: flex;
+      gap: 10px;
+      margin-bottom: 48px;
+    }
+
+    .create-box textarea {
+      flex: 1;
+      padding: 12px;
+      background: #18181b;
+      border: 1px solid #27272a;
+      border-radius: 6px;
+      color: #fafafa;
+      font-family: inherit;
+      font-size: 13px;
+      resize: none;
+      height: 44px;
+      outline: none;
+      transition: border-color .15s;
+    }
+
+    .create-box textarea:focus {
+      border-color: #3b82f6;
+    }
+
+    .create-box textarea::placeholder {
+      color: #3f3f46;
+    }
+
+    #createBtn {
+      font-family: inherit;
+      font-size: 12px;
+      padding: 0 20px;
+      border-radius: 6px;
+      border: none;
+      background: #3b82f6;
+      color: #fafafa;
+      cursor: pointer;
+      transition: .15s;
+      white-space: nowrap;
+    }
+
+    #createBtn:hover { background: #2563eb; }
+    #createBtn:disabled { opacity: .3; cursor: not-allowed; }
+
+    /* ── Proposals ─────────────── */
+    .proposals {
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+    }
+
+    .prop {
+      background: #18181b;
+      padding: 20px;
+      transition: .15s;
+    }
+
+    .prop:first-child { border-radius: 8px 8px 0 0; }
+    .prop:last-child { border-radius: 0 0 8px 8px; }
+    .prop:only-child { border-radius: 8px; }
+
+    .prop:hover { background: #1c1c1f; }
+
+    .prop-top {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 12px;
+    }
+
+    .prop-id {
+      font-size: 11px;
+      color: #52525b;
+    }
+
+    .badge {
+      font-size: 10px;
+      text-transform: uppercase;
+      letter-spacing: .8px;
+      padding: 2px 8px;
+      border-radius: 4px;
+    }
+
+    .badge-active { color: #4ade80; background: rgba(74,222,128,.08); }
+    .badge-ended { color: #fbbf24; background: rgba(251,191,36,.08); }
+    .badge-done { color: #52525b; background: rgba(82,82,91,.1); }
+
+    .prop-desc {
+      font-size: 14px;
+      color: #fafafa;
+      margin-bottom: 16px;
+      line-height: 1.5;
+    }
+
+    .prop-by {
+      font-size: 11px;
+      color: #3f3f46;
+      margin-bottom: 16px;
+    }
+
+    .vbar-row {
+      display: flex;
+      justify-content: space-between;
+      font-size: 11px;
+      margin-bottom: 6px;
+    }
+
+    .vbar-row .f { color: #4ade80; }
+    .vbar-row .a { color: #f87171; }
+
+    .vbar {
+      height: 4px;
+      background: #27272a;
+      border-radius: 2px;
+      overflow: hidden;
+      display: flex;
+      margin-bottom: 12px;
+    }
+
+    .vbar-f { background: #4ade80; height: 100%; transition: width .3s; }
+    .vbar-a { background: #f87171; height: 100%; transition: width .3s; }
+
+    .prop-time {
+      font-size: 11px;
+      color: #3f3f46;
+      margin-bottom: 12px;
+    }
+
+    .vote-row {
+      display: flex;
+      gap: 8px;
+    }
+
+    .vote-row .btn { flex: 1; }
+
+    .btn {
+      font-family: inherit;
+      font-size: 12px;
+      padding: 8px 16px;
+      border-radius: 6px;
+      border: none;
+      cursor: pointer;
+      transition: .15s;
+    }
+
+    .btn-for {
+      background: rgba(74,222,128,.1);
+      color: #4ade80;
+      border: 1px solid rgba(74,222,128,.15);
+    }
+
+    .btn-for:hover { background: rgba(74,222,128,.18); }
+
+    .btn-against {
+      background: rgba(248,113,113,.1);
+      color: #f87171;
+      border: 1px solid rgba(248,113,113,.15);
+    }
+
+    .btn-against:hover { background: rgba(248,113,113,.18); }
+
+    .btn-exec {
+      width: 100%;
+      background: rgba(251,191,36,.1);
+      color: #fbbf24;
+      border: 1px solid rgba(251,191,36,.15);
+    }
+
+    .btn-exec:hover { background: rgba(251,191,36,.18); }
+
+    .voted-label {
+      font-size: 11px;
+      color: #52525b;
+    }
+
+    .prop-msg {
+      font-size: 11px;
+      padding: 8px 12px;
+      border-radius: 6px;
+    }
+
+    .msg-ok { color: #4ade80; background: rgba(74,222,128,.06); }
+    .msg-no { color: #f87171; background: rgba(248,113,113,.06); }
+
+    .prop-result {
+      font-size: 11px;
+      float: right;
+    }
+
+    .passed { color: #4ade80; }
+    .rejected { color: #f87171; }
+
+    .empty {
+      text-align: center;
+      padding: 48px 16px;
+      color: #3f3f46;
+    }
+
+    .toast {
+      position: fixed;
+      bottom: 20px;
+      right: 20px;
+      padding: 10px 18px;
+      border-radius: 6px;
+      font-family: inherit;
+      font-size: 12px;
+      z-index: 999;
+      transform: translateY(60px);
+      opacity: 0;
+      transition: .25s;
+      max-width: 340px;
+    }
+
+    .toast.show { transform: translateY(0); opacity: 1; }
+    .toast.ok { background: #052e16; color: #4ade80; }
+    .toast.err { background: #350a0a; color: #f87171; }
+    .toast.inf { background: #172554; color: #60a5fa; }
+
+    .spin {
+      display: inline-block;
+      width: 10px;
+      height: 10px;
+      border: 1.5px solid transparent;
+      border-top-color: currentColor;
+      border-radius: 50%;
+      animation: sp .5s linear infinite;
+      margin-right: 4px;
+      vertical-align: middle;
+    }
+
+    @keyframes sp { to { transform: rotate(360deg); } }
+
+    @media (max-width: 560px) {
+      header { flex-direction: column; gap: 12px; align-items: flex-start; }
+      .stats { flex-direction: column; }
+      .create-box { flex-direction: column; }
+      #createBtn { padding: 10px; }
+      .vote-row { flex-direction: column; }
+    }
+  </style>
+</head>
+<body>
+
+<div class="wrap">
+  <header>
+    <div class="logo">SuperToken <span>DAO</span></div>
+    <button id="connectBtn">connect wallet</button>
+  </header>
+
+  <div class="stats">
+    <div class="stat">
+      <div class="stat-label">Balance</div>
+      <div class="stat-val" id="balVal">—</div>
+    </div>
+    <div class="stat">
+      <div class="stat-label">Proposals</div>
+      <div class="stat-val" id="propCount">0</div>
+    </div>
+    <div class="stat">
+      <div class="stat-label">Network</div>
+      <div class="stat-val" id="netName">—</div>
+    </div>
+  </div>
+
+  <div class="section-label">New proposal</div>
+  <div class="create-box">
+    <textarea id="descInput" placeholder="Describe your proposal..." rows="1"></textarea>
+    <button id="createBtn" disabled>Submit</button>
+  </div>
+
+  <div class="section-label">All proposals</div>
+  <div class="proposals" id="propList">
+    <div class="empty">connect wallet to view proposals</div>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+  // ═══════════════════════════════
+  // CONFIG
+  // ═══════════════════════════════
+  const TOKEN_ADDR = "0xD436dcc96f201a0F7d3A80f6b79602A845418222";
+  const DAO_ADDR   = "0x43dE4BF0affc8D357B896400621c9b4B2F728F39";
+  const CHAIN_ID   = 11155111; // Sepolia
+  const FIXED_DURATION = 61;
+
+  const TOKEN_ABI = [
+    "function balanceOf(address) view returns (uint256)",
+    "function symbol() view returns (string)",
+    "function decimals() view returns (uint8)"
+  ];
+
+  const DAO_ABI = [
+    {inputs:[{internalType:"string",name:"_description",type:"string"},{internalType:"uint256",name:"_duration",type:"uint256"}],name:"createProposal",outputs:[{internalType:"uint256",name:"",type:"uint256"}],stateMutability:"nonpayable",type:"function"},
+    {inputs:[{internalType:"uint256",name:"_proposalId",type:"uint256"},{internalType:"bool",name:"_support",type:"bool"}],name:"vote",outputs:[],stateMutability:"nonpayable",type:"function"},
+    {inputs:[{internalType:"uint256",name:"_proposalId",type:"uint256"}],name:"executeProposal",outputs:[],stateMutability:"nonpayable",type:"function"},
+    {inputs:[],name:"proposalCount",outputs:[{internalType:"uint256",name:"",type:"uint256"}],stateMutability:"view",type:"function"},
+    {inputs:[{internalType:"uint256",name:"_proposalId",type:"uint256"}],name:"getProposal",outputs:[{internalType:"uint256",name:"id",type:"uint256"},{internalType:"string",name:"description",type:"string"},{internalType:"uint256",name:"deadline",type:"uint256"},{internalType:"uint256",name:"votesFor",type:"uint256"},{internalType:"uint256",name:"votesAgainst",type:"uint256"},{internalType:"bool",name:"executed",type:"bool"},{internalType:"address",name:"proposer",type:"address"}],stateMutability:"view",type:"function"},
+    {inputs:[{internalType:"uint256",name:"_proposalId",type:"uint256"},{internalType:"address",name:"_voter",type:"address"}],name:"hasVoted",outputs:[{internalType:"bool",name:"",type:"bool"}],stateMutability:"view",type:"function"}
+  ];
+
+  let provider, signer, userAddr;
+  let tokenC, daoRead, daoWrite;
+
+  async function connect() {
+    if (!window.ethereum) { toast("MetaMask not found", "err"); return; }
+
+    try {
+      provider = new ethers.BrowserProvider(window.ethereum);
+      await provider.send("eth_requestAccounts", []);
+      signer = await provider.getSigner();
+      userAddr = await signer.getAddress();
+
+      const net = await provider.getNetwork();
+      const chain = Number(net.chainId);
+      const names = { 1:"Mainnet", 11155111:"Sepolia", 137:"Polygon" };
+      document.getElementById("netName").textContent = names[chain] || chain;
+
+      if (chain !== CHAIN_ID) {
+        toast("Switch to Sepolia", "err");
+        try {
+          await window.ethereum.request({
+            method: "wallet_switchEthereumChain",
+            params: [{ chainId: "0x" + CHAIN_ID.toString(16) }]
+          });
+          location.reload();
+        } catch(e) {}
+        return;
+      }
+
+      const code1 = await provider.getCode(TOKEN_ADDR);
+      const code2 = await provider.getCode(DAO_ADDR);
+      if (code1 === "0x" || code2 === "0x") {
+        toast("Contract not found on Sepolia", "err");
+        return;
+      }
+
+      tokenC   = new ethers.Contract(TOKEN_ADDR, TOKEN_ABI, provider);
+      daoRead  = new ethers.Contract(DAO_ADDR, DAO_ABI, provider);
+      daoWrite = new ethers.Contract(DAO_ADDR, DAO_ABI, signer);
+
+      document.getElementById("connectBtn").textContent =
+              userAddr.slice(0,6) + "..." + userAddr.slice(-4);
+      document.getElementById("connectBtn").classList.add("on");
+      document.getElementById("createBtn").disabled = false;
+
+      toast("Connected", "ok");
+      await refresh();
+
+      window.ethereum.on("accountsChanged", () => location.reload());
+      window.ethereum.on("chainChanged", () => location.reload());
+    } catch(e) {
+      console.error(e);
+      toast(e.reason || e.message, "err");
+    }
+  }
+
+  async function refresh() {
+    if (!provider || !userAddr) return;
+
+    try {
+      const bal = await tokenC.balanceOf(userAddr);
+      document.getElementById("balVal").textContent =
+              parseFloat(ethers.formatEther(bal)).toLocaleString("en-US", { maximumFractionDigits: 2 }) + " MTK";
+    } catch(e) {
+      document.getElementById("balVal").textContent = "error";
+    }
+
+    try {
+      const count = await daoRead.proposalCount();
+      document.getElementById("propCount").textContent = count.toString();
+      await renderProposals(Number(count));
+    } catch(e) {
+      console.error(e);
+      document.getElementById("propList").innerHTML = '<div class="empty">failed to load proposals</div>';
+    }
+  }
+
+  function esc(s) { const d = document.createElement("div"); d.textContent = s; return d.innerHTML; }
+  function short(a) { return a.slice(0,6) + "..." + a.slice(-4); }
+
+  async function renderProposals(count) {
+    const list = document.getElementById("propList");
+    if (count === 0) { list.innerHTML = '<div class="empty">no proposals yet</div>'; return; }
+
+    let html = "";
+    const now = Math.floor(Date.now() / 1000);
+
+    for (let i = count; i >= 1; i--) {
+      try {
+        const p = await daoRead.getProposal(i);
+        const deadline = Number(p.deadline);
+        const executed = p.executed;
+        const active = now <= deadline && !executed;
+        const ended = now > deadline && !executed;
+
+        let badgeCls, badgeTxt;
+        if (executed)    { badgeCls = "badge-done";   badgeTxt = "executed"; }
+        else if (active) { badgeCls = "badge-active"; badgeTxt = "active"; }
+        else             { badgeCls = "badge-ended";  badgeTxt = "ended"; }
+
+        const vF = Number(ethers.formatEther(p.votesFor));
+        const vA = Number(ethers.formatEther(p.votesAgainst));
+        const total = vF + vA;
+        const fPct = total > 0 ? (vF / total) * 100 : 0;
+        const aPct = total > 0 ? (vA / total) * 100 : 0;
+
+        let voted = false;
+        try { voted = await daoRead.hasVoted(i, userAddr); } catch(e) {}
+
+        let timeStr;
+        if (active) {
+          const rem = deadline - now;
+          if (rem > 86400)     timeStr = Math.floor(rem / 86400) + "d left";
+          else if (rem > 3600) timeStr = Math.floor(rem / 3600) + "h left";
+          else if (rem > 60)   timeStr = Math.floor(rem / 60) + "m left";
+          else                 timeStr = rem + "s left";
+        } else {
+          timeStr = "ended " + new Date(deadline * 1000).toLocaleDateString();
+        }
+
+        let actions = "";
+        if (active && !voted) {
+          actions = `<div class="vote-row">
+              <button class="btn btn-for" onclick="doVote(${i},true)">for</button>
+              <button class="btn btn-against" onclick="doVote(${i},false)">against</button>
+            </div>`;
+        } else if (active && voted) {
+          actions = '<div class="voted-label">✓ voted</div>';
+        } else if (ended && vF > vA) {
+          actions = `<button class="btn btn-exec" onclick="doExec(${i})">execute</button>`;
+        } else if (ended) {
+          actions = '<div class="prop-msg msg-no">' + (total === 0 ? 'no votes cast' : 'rejected') + '</div>';
+        } else if (executed) {
+          const ok = vF > vA;
+          actions = '<div class="prop-msg ' + (ok ? 'msg-ok' : 'msg-no') + '">' +
+                  (ok ? 'executed' : 'rejected') + '</div>';
+        }
+
+        let resultHtml = "";
+        if (executed) {
+          const ok = vF > vA;
+          resultHtml = '<span class="prop-result ' + (ok ? 'passed' : 'rejected') + '">' +
+                  (ok ? 'passed' : 'rejected') + '</span>';
+        }
+
+        html += `<div class="prop">
+            <div class="prop-top">
+              <span class="prop-id">#${Number(p.id)}</span>
+              <span class="badge ${badgeCls}">${badgeTxt}</span>
+            </div>
+            <div class="prop-desc">${esc(p.description)}</div>
+            <div class="prop-by">${short(p.proposer)}</div>
+            <div class="vbar-row">
+              <span class="f">for ${vF.toLocaleString("en-US",{maximumFractionDigits:2})}</span>
+              <span class="a">against ${vA.toLocaleString("en-US",{maximumFractionDigits:2})}</span>
+            </div>
+            <div class="vbar">
+              <div class="vbar-f" style="width:${fPct}%"></div>
+              <div class="vbar-a" style="width:${aPct}%"></div>
+            </div>
+            <div class="prop-time">${timeStr} ${resultHtml}</div>
+            ${actions}
+          </div>`;
+      } catch(e) { console.error("proposal", i, e); }
+    }
+
+    list.innerHTML = html || '<div class="empty">failed to render</div>';
+  }
+
+  async function doCreate() {
+    if (!daoWrite) return;
+    const desc = document.getElementById("descInput").value.trim();
+    if (!desc) { toast("enter a description", "err"); return; }
+
+    const btn = document.getElementById("createBtn");
+    btn.disabled = true;
+    btn.innerHTML = '<span class="spin"></span>';
+
+    try {
+      const tx = await daoWrite.createProposal(desc, FIXED_DURATION);
+      toast("tx sent...", "inf");
+      await tx.wait();
+      toast("proposal created", "ok");
+      document.getElementById("descInput").value = "";
+      await refresh();
+    } catch(e) {
+      console.error(e);
+      toast(e.reason || e.message, "err");
+    } finally {
+      btn.disabled = false;
+      btn.textContent = "Submit";
+    }
+  }
+
+  async function doVote(id, support) {
+    if (!daoWrite) return;
+    try {
+      toast("voting...", "inf");
+      const tx = await daoWrite.vote(id, support);
+      await tx.wait();
+      toast("vote recorded", "ok");
+      await refresh();
+    } catch(e) {
+      console.error(e);
+      toast(e.reason || e.message, "err");
+    }
+  }
+
+  async function doExec(id) {
+    if (!daoWrite) return;
+    try {
+      toast("executing...", "inf");
+      const tx = await daoWrite.executeProposal(id);
+      await tx.wait();
+      toast("executed", "ok");
+      await refresh();
+    } catch(e) {
+      console.error(e);
+      toast(e.reason || e.message, "err");
+    }
+  }
+
+  function toast(msg, type) {
+    const t = document.getElementById("toast");
+    t.textContent = msg;
+    t.className = "toast " + type + " show";
+    clearTimeout(t._to);
+    t._to = setTimeout(() => t.classList.remove("show"), 3500);
+  }
+
+  document.getElementById("connectBtn").addEventListener("click", () => {
+    userAddr ? location.reload() : connect();
+  });
+
+  document.getElementById("createBtn").addEventListener("click", doCreate);
+
+  window.addEventListener("load", async () => {
+    if (window.ethereum) {
+      const accs = await window.ethereum.request({ method: "eth_accounts" });
+      if (accs.length > 0) connect();
+    }
+  });
+</script>
+</body>
+</html>
