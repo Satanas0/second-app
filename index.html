@@ -171,6 +171,73 @@
       color: #fafafa;
     }
 
+    .bridge-box {
+      background: #18181b;
+      border: 1px solid #27272a;
+      border-radius: 8px;
+      padding: 14px;
+      margin-bottom: 40px;
+    }
+
+    .bridge-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 10px;
+      margin-bottom: 10px;
+    }
+
+    .bridge-grid input {
+      padding: 10px 12px;
+      background: #09090b;
+      border: 1px solid #27272a;
+      border-radius: 6px;
+      color: #fafafa;
+      font-family: inherit;
+      font-size: 12px;
+      outline: none;
+    }
+
+    .bridge-actions {
+      display: flex;
+      gap: 8px;
+      margin-bottom: 10px;
+    }
+
+    .bridge-actions .btn { flex: 1; }
+    .btn-lock {
+      background: rgba(96,165,250,.12);
+      color: #60a5fa;
+      border: 1px solid rgba(96,165,250,.2);
+    }
+    .btn-burn {
+      background: rgba(251,191,36,.12);
+      color: #fbbf24;
+      border: 1px solid rgba(251,191,36,.2);
+    }
+
+    .bridge-note {
+      font-size: 11px;
+      color: #52525b;
+      margin-bottom: 10px;
+    }
+
+    .bridge-events {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+      font-size: 11px;
+      color: #a1a1aa;
+      max-height: 140px;
+      overflow: auto;
+    }
+
+    .bridge-event {
+      padding: 7px 8px;
+      background: #09090b;
+      border: 1px solid #27272a;
+      border-radius: 6px;
+    }
+
     #createBtn {
       font-family: inherit;
       font-size: 12px;
@@ -381,6 +448,8 @@
       .create-box { flex-direction: column; }
       #createBtn { padding: 10px; }
       .vote-row { flex-direction: column; }
+      .bridge-grid { grid-template-columns: 1fr; }
+      .bridge-actions { flex-direction: column; }
     }
   </style>
 </head>
@@ -414,6 +483,26 @@
     <input id="tokenInput" placeholder="TOKEN_ADDR">
     <input id="daoInput" placeholder="DAO_ADDR">
     <button id="applyCfgBtn">Apply config</button>
+  </div>
+
+  <div class="section-label">Bridge actions</div>
+  <div class="bridge-box">
+    <div class="bridge-grid">
+      <input id="bridgeAmountInput" placeholder="Amount (e.g. 10)">
+      <input id="bridgeRecipientInput" placeholder="Recipient address (other service)">
+      <input id="bridgeChainInput" placeholder="Target chainId (e.g. 11155111)">
+      <input id="bridgeBlocksInput" placeholder="Event lookback blocks (default 4000)">
+    </div>
+    <div class="bridge-actions">
+      <button class="btn btn-lock" id="lockBtn" disabled>Lock to target</button>
+      <button class="btn btn-burn" id="burnBtn" disabled>Burn to unlock</button>
+    </div>
+    <div class="bridge-note">
+      After lock/burn run oracle scripts in terminal, then click "Connect wallet" again to refresh.
+    </div>
+    <div class="bridge-events" id="bridgeEvents">
+      <div class="bridge-event">connect wallet to load bridge events</div>
+    </div>
   </div>
 
   <div class="section-label">New proposal</div>
@@ -458,7 +547,13 @@
   const TOKEN_ABI = [
     "function balanceOf(address) view returns (uint256)",
     "function symbol() view returns (string)",
-    "function decimals() view returns (uint8)"
+    "function decimals() view returns (uint8)",
+    "function lock(uint256 amount,address recipient,uint256 targetChainId)",
+    "function burnForUnlock(uint256 amount,address recipient,uint256 targetChainId)",
+    "event Locked(address indexed sender,address indexed recipient,uint256 amount,uint256 targetChainId,uint256 nonce)",
+    "event BurnedForUnlock(address indexed sender,address indexed recipient,uint256 amount,uint256 targetChainId,uint256 nonce)",
+    "event MintedFromBridge(address indexed recipient,uint256 amount,uint256 sourceChainId,bytes32 indexed lockTxHash)",
+    "event Unlocked(address indexed recipient,uint256 amount,bytes32 indexed burnTxHash)"
   ];
 
   const DAO_ABI = [
@@ -475,7 +570,7 @@
   ];
 
   let provider, signer, userAddr;
-  let tokenC, daoRead, daoWrite, daoTotals;
+  let tokenC, tokenWrite, daoRead, daoWrite, daoTotals;
 
   async function connect() {
     if (!window.ethereum) { toast("MetaMask not found", "err"); return; }
@@ -511,6 +606,7 @@
       }
 
       tokenC   = new ethers.Contract(TOKEN_ADDR, TOKEN_ABI, provider);
+      tokenWrite = new ethers.Contract(TOKEN_ADDR, TOKEN_ABI, signer);
       daoRead  = new ethers.Contract(DAO_ADDR, DAO_ABI, provider);
       daoWrite = new ethers.Contract(DAO_ADDR, DAO_ABI, signer);
       daoTotals = new ethers.Contract(DAO_ADDR, DAO_TOTAL_ABI, provider);
@@ -519,9 +615,12 @@
               userAddr.slice(0,6) + "..." + userAddr.slice(-4);
       document.getElementById("connectBtn").classList.add("on");
       document.getElementById("createBtn").disabled = false;
+      document.getElementById("lockBtn").disabled = false;
+      document.getElementById("burnBtn").disabled = false;
 
       toast("Connected", "ok");
       await refresh();
+      await refreshBridgeEvents();
 
       window.ethereum.on("accountsChanged", () => location.reload());
       window.ethereum.on("chainChanged", () => location.reload());
@@ -549,6 +648,83 @@
     } catch(e) {
       console.error(e);
       document.getElementById("propList").innerHTML = '<div class="empty">failed to load proposals</div>';
+    }
+  }
+
+  function shortTx(h) { return h ? `${h.slice(0,10)}...${h.slice(-6)}` : "n/a"; }
+
+  async function refreshBridgeEvents() {
+    if (!provider || !tokenC) return;
+    const wrap = document.getElementById("bridgeEvents");
+    const lookback = Number(document.getElementById("bridgeBlocksInput").value.trim() || "4000");
+    const latest = await provider.getBlockNumber();
+    const fromBlock = Math.max(0, latest - (Number.isFinite(lookback) ? lookback : 4000));
+    const names = ["Locked", "BurnedForUnlock", "MintedFromBridge", "Unlocked"];
+    const collected = [];
+
+    for (const name of names) {
+      try {
+        const logs = await tokenC.queryFilter(tokenC.filters[name](), fromBlock, latest);
+        for (const log of logs.slice(-3)) {
+          const amountRaw = log.args && log.args.amount ? log.args.amount : 0n;
+          const amount = Number(ethers.formatEther(amountRaw)).toLocaleString("en-US", { maximumFractionDigits: 4 });
+          collected.push({
+            block: Number(log.blockNumber),
+            line: `${name} • ${amount} • tx ${shortTx(log.transactionHash)}`
+          });
+        }
+      } catch (_) {}
+    }
+
+    collected.sort((a, b) => b.block - a.block);
+    if (!collected.length) {
+      wrap.innerHTML = '<div class="bridge-event">no bridge events in selected range</div>';
+      return;
+    }
+    wrap.innerHTML = collected.slice(0, 8).map((x) => `<div class="bridge-event">${esc(x.line)}</div>`).join("");
+  }
+
+  async function doLock() {
+    if (!tokenWrite || !userAddr) return;
+    const amountText = document.getElementById("bridgeAmountInput").value.trim();
+    const recipient = document.getElementById("bridgeRecipientInput").value.trim();
+    const targetChain = Number(document.getElementById("bridgeChainInput").value.trim() || CHAIN_ID);
+    if (!amountText || !recipient || !Number.isFinite(targetChain)) {
+      toast("amount/recipient/chain required", "err");
+      return;
+    }
+    try {
+      const tx = await tokenWrite.lock(ethers.parseEther(amountText), recipient, targetChain);
+      toast("lock tx sent...", "inf");
+      await tx.wait();
+      toast("locked, run oracle:mint", "ok");
+      await refresh();
+      await refreshBridgeEvents();
+    } catch (e) {
+      console.error(e);
+      toast(e.reason || e.message, "err");
+    }
+  }
+
+  async function doBurn() {
+    if (!tokenWrite || !userAddr) return;
+    const amountText = document.getElementById("bridgeAmountInput").value.trim();
+    const recipient = document.getElementById("bridgeRecipientInput").value.trim();
+    const targetChain = Number(document.getElementById("bridgeChainInput").value.trim() || CHAIN_ID);
+    if (!amountText || !recipient || !Number.isFinite(targetChain)) {
+      toast("amount/recipient/chain required", "err");
+      return;
+    }
+    try {
+      const tx = await tokenWrite.burnForUnlock(ethers.parseEther(amountText), recipient, targetChain);
+      toast("burn tx sent...", "inf");
+      await tx.wait();
+      toast("burned, run oracle:unlock", "ok");
+      await refresh();
+      await refreshBridgeEvents();
+    } catch (e) {
+      console.error(e);
+      toast(e.reason || e.message, "err");
     }
   }
 
@@ -717,6 +893,11 @@
   });
 
   document.getElementById("createBtn").addEventListener("click", doCreate);
+  document.getElementById("lockBtn").addEventListener("click", doLock);
+  document.getElementById("burnBtn").addEventListener("click", doBurn);
+  document.getElementById("bridgeBlocksInput").addEventListener("change", () => {
+    if (provider) refreshBridgeEvents().catch(console.error);
+  });
   document.querySelector(".logo").innerHTML = `SuperToken <span>DAO ${esc(CONFIG.service)}</span>`;
 
   function fillConfigForm() {
@@ -724,6 +905,10 @@
     document.getElementById("chainIdInput").value = String(CONFIG.chainId);
     document.getElementById("tokenInput").value = CONFIG.token;
     document.getElementById("daoInput").value = CONFIG.dao;
+    document.getElementById("bridgeRecipientInput").value = "";
+    document.getElementById("bridgeAmountInput").value = "1";
+    document.getElementById("bridgeChainInput").value = String(CONFIG.chainId);
+    document.getElementById("bridgeBlocksInput").value = "4000";
   }
 
   function applyConfig() {
