@@ -130,6 +130,47 @@
       color: #3f3f46;
     }
 
+    .cfg-box {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 10px;
+      margin-bottom: 24px;
+    }
+
+    .cfg-box input {
+      padding: 10px 12px;
+      background: #18181b;
+      border: 1px solid #27272a;
+      border-radius: 6px;
+      color: #fafafa;
+      font-family: inherit;
+      font-size: 12px;
+      outline: none;
+      transition: border-color .15s;
+    }
+
+    .cfg-box input:focus {
+      border-color: #3b82f6;
+    }
+
+    #applyCfgBtn {
+      grid-column: 1 / -1;
+      justify-self: start;
+      padding: 8px 14px;
+      border: 1px solid #27272a;
+      border-radius: 6px;
+      background: transparent;
+      color: #a1a1aa;
+      font-family: inherit;
+      cursor: pointer;
+      transition: .15s;
+    }
+
+    #applyCfgBtn:hover {
+      border-color: #3b82f6;
+      color: #fafafa;
+    }
+
     #createBtn {
       font-family: inherit;
       font-size: 12px;
@@ -366,6 +407,15 @@
     </div>
   </div>
 
+  <div class="section-label">Service config</div>
+  <div class="cfg-box">
+    <input id="svcNameInput" placeholder="Service name (source/target)">
+    <input id="chainIdInput" placeholder="Chain ID (e.g. 11155111)">
+    <input id="tokenInput" placeholder="TOKEN_ADDR">
+    <input id="daoInput" placeholder="DAO_ADDR">
+    <button id="applyCfgBtn">Apply config</button>
+  </div>
+
   <div class="section-label">New proposal</div>
   <div class="create-box">
     <textarea id="descInput" placeholder="Describe your proposal..." rows="1"></textarea>
@@ -382,11 +432,27 @@
 
 <script>
   // ═══════════════════════════════
-  // CONFIG
+  // RUNTIME CONFIG (supports multi-service deployments)
   // ═══════════════════════════════
-  const TOKEN_ADDR = "0xD436dcc96f201a0F7d3A80f6b79602A845418222";
-  const DAO_ADDR   = "0x43dE4BF0affc8D357B896400621c9b4B2F728F39";
-  const CHAIN_ID   = 11155111; // Sepolia
+  const DEFAULT_CONFIG = {
+    service: "source",
+    chainId: 11155111,
+    token: "0xD436dcc96f201a0F7d3A80f6b79602A845418222",
+    dao: "0x43dE4BF0affc8D357B896400621c9b4B2F728F39"
+  };
+  const savedCfg = (() => {
+    try { return JSON.parse(localStorage.getItem("daoProfileConfig") || "{}"); } catch(_) { return {}; }
+  })();
+  const params = new URLSearchParams(location.search);
+  const CONFIG = {
+    service: params.get("service") || savedCfg.service || DEFAULT_CONFIG.service,
+    chainId: Number(params.get("chainId") || savedCfg.chainId || DEFAULT_CONFIG.chainId),
+    token: params.get("token") || savedCfg.token || DEFAULT_CONFIG.token,
+    dao: params.get("dao") || savedCfg.dao || DEFAULT_CONFIG.dao
+  };
+  const TOKEN_ADDR = CONFIG.token;
+  const DAO_ADDR   = CONFIG.dao;
+  const CHAIN_ID   = CONFIG.chainId;
   const FIXED_DURATION = 61;
 
   const TOKEN_ABI = [
@@ -403,9 +469,13 @@
     {inputs:[{internalType:"uint256",name:"_proposalId",type:"uint256"}],name:"getProposal",outputs:[{internalType:"uint256",name:"id",type:"uint256"},{internalType:"string",name:"description",type:"string"},{internalType:"uint256",name:"deadline",type:"uint256"},{internalType:"uint256",name:"votesFor",type:"uint256"},{internalType:"uint256",name:"votesAgainst",type:"uint256"},{internalType:"bool",name:"executed",type:"bool"},{internalType:"address",name:"proposer",type:"address"}],stateMutability:"view",type:"function"},
     {inputs:[{internalType:"uint256",name:"_proposalId",type:"uint256"},{internalType:"address",name:"_voter",type:"address"}],name:"hasVoted",outputs:[{internalType:"bool",name:"",type:"bool"}],stateMutability:"view",type:"function"}
   ];
+  const DAO_TOTAL_ABI = [
+    "function getTotalVotesFor(uint256 proposalId) view returns (uint256)",
+    "function getTotalVotesAgainst(uint256 proposalId) view returns (uint256)"
+  ];
 
   let provider, signer, userAddr;
-  let tokenC, daoRead, daoWrite;
+  let tokenC, daoRead, daoWrite, daoTotals;
 
   async function connect() {
     if (!window.ethereum) { toast("MetaMask not found", "err"); return; }
@@ -419,10 +489,10 @@
       const net = await provider.getNetwork();
       const chain = Number(net.chainId);
       const names = { 1:"Mainnet", 11155111:"Sepolia", 137:"Polygon" };
-      document.getElementById("netName").textContent = names[chain] || chain;
+      document.getElementById("netName").textContent = `${names[chain] || chain} (${CONFIG.service})`;
 
       if (chain !== CHAIN_ID) {
-        toast("Switch to Sepolia", "err");
+        toast(`Switch to chain ${CHAIN_ID}`, "err");
         try {
           await window.ethereum.request({
             method: "wallet_switchEthereumChain",
@@ -443,6 +513,7 @@
       tokenC   = new ethers.Contract(TOKEN_ADDR, TOKEN_ABI, provider);
       daoRead  = new ethers.Contract(DAO_ADDR, DAO_ABI, provider);
       daoWrite = new ethers.Contract(DAO_ADDR, DAO_ABI, signer);
+      daoTotals = new ethers.Contract(DAO_ADDR, DAO_TOTAL_ABI, provider);
 
       document.getElementById("connectBtn").textContent =
               userAddr.slice(0,6) + "..." + userAddr.slice(-4);
@@ -504,8 +575,15 @@
         else if (active) { badgeCls = "badge-active"; badgeTxt = "active"; }
         else             { badgeCls = "badge-ended";  badgeTxt = "ended"; }
 
-        const vF = Number(ethers.formatEther(p.votesFor));
-        const vA = Number(ethers.formatEther(p.votesAgainst));
+        let rawFor = p.votesFor;
+        let rawAgainst = p.votesAgainst;
+        try {
+          rawFor = await daoTotals.getTotalVotesFor(i);
+          rawAgainst = await daoTotals.getTotalVotesAgainst(i);
+        } catch(_) {}
+
+        const vF = Number(ethers.formatEther(rawFor));
+        const vA = Number(ethers.formatEther(rawAgainst));
         const total = vF + vA;
         const fPct = total > 0 ? (vF / total) * 100 : 0;
         const aPct = total > 0 ? (vA / total) * 100 : 0;
@@ -639,8 +717,45 @@
   });
 
   document.getElementById("createBtn").addEventListener("click", doCreate);
+  document.querySelector(".logo").innerHTML = `SuperToken <span>DAO ${esc(CONFIG.service)}</span>`;
+
+  function fillConfigForm() {
+    document.getElementById("svcNameInput").value = CONFIG.service;
+    document.getElementById("chainIdInput").value = String(CONFIG.chainId);
+    document.getElementById("tokenInput").value = CONFIG.token;
+    document.getElementById("daoInput").value = CONFIG.dao;
+  }
+
+  function applyConfig() {
+    const service = document.getElementById("svcNameInput").value.trim() || DEFAULT_CONFIG.service;
+    const chainId = Number(document.getElementById("chainIdInput").value.trim());
+    const token = document.getElementById("tokenInput").value.trim();
+    const dao = document.getElementById("daoInput").value.trim();
+
+    if (!Number.isFinite(chainId) || chainId <= 0) {
+      toast("invalid chain id", "err");
+      return;
+    }
+    if (!token || !dao) {
+      toast("token/dao required", "err");
+      return;
+    }
+
+    const next = { service, chainId, token, dao };
+    localStorage.setItem("daoProfileConfig", JSON.stringify(next));
+    const q = new URLSearchParams({
+      service: next.service,
+      chainId: String(next.chainId),
+      token: next.token,
+      dao: next.dao
+    });
+    location.search = q.toString();
+  }
+
+  document.getElementById("applyCfgBtn").addEventListener("click", applyConfig);
 
   window.addEventListener("load", async () => {
+    fillConfigForm();
     if (window.ethereum) {
       const accs = await window.ethereum.request({ method: "eth_accounts" });
       if (accs.length > 0) connect();

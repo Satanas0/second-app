@@ -1,6 +1,6 @@
 const { ethers } = require("hardhat");
 
-const CONTRACT_ADDRESS = "0x349A10AE1087871C319a0CEd0c13Fcc4bcCBcD13";
+const CONTRACT_ADDRESS = "0xD436dcc96f201a0F7d3A80f6b79602A845418222";
 
 async function mintTo(token, address, amount) {
   console.log(`Minting ${amount} tokens to ${address}...`);
