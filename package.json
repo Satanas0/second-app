@@ -8,8 +8,12 @@
     "compile": "npx hardhat compile",
     "deploy:bridge": "npx hardhat run scripts/deployBridgeStack.js --network sepolia",
     "oracle:mint": "node scripts/oracle/bridgeOracle.js",
+    "oracle:votes-reverse": "node scripts/oracle/voteRelayReverse.js",
+    "oracle:proposals": "node scripts/oracle/proposalRelay.js",
     "oracle:unlock": "node scripts/oracle/unlockOracle.js",
-    "oracle:votes": "node scripts/oracle/voteRelay.js"
+    "oracle:votes": "node scripts/oracle/voteRelay.js",
+    "vote:transfer": "npx hardhat run scripts/transferVoteToken.js --network sepolia",
+    "vote:mint": "npx hardhat run scripts/mintVoteToken.js --network sepolia"
   },
   "keywords": [],
   "author": "",
